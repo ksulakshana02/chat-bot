@@ -644,15 +644,22 @@
 // }
 
 
-// src/app/page.tsx
+//-----------------------------------------
 // 'use client';
 //
 // import { useState, useEffect, useRef } from 'react';
+// import { AnimatePresence, motion } from 'framer-motion';
 //
 // interface Message {
 //     id: number;
 //     content: string;
 //     isUser: boolean;
+// }
+//
+// interface Stats {
+//     pages: number;
+//     chunks: number;
+//     totalCharacters: number;
 // }
 //
 // export default function Home() {
@@ -661,8 +668,11 @@
 //     const [query, setQuery] = useState('');
 //     const [isUploading, setIsUploading] = useState(false);
 //     const [isQuerying, setIsQuerying] = useState(false);
+//     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+//     const [stats, setStats] = useState<Stats | null>(null);
 //     const fileInputRef = useRef<HTMLInputElement>(null);
 //     const chatContainerRef = useRef<HTMLDivElement>(null);
+//     const queryInputRef = useRef<HTMLInputElement>(null);
 //
 //     // Auto-scroll to the bottom when new messages are added
 //     useEffect(() => {
@@ -703,13 +713,33 @@
 //                 throw new Error(data.error || 'Failed to upload PDF');
 //             }
 //
+//             setCurrentSessionId(data.sessionId);
+//             setStats(data.stats);
+//
+//             // Fetch proactive suggestions
+//             const suggestionRes = await fetch('/api/suggestions', {
+//                 method: 'POST',
+//                 headers: { 'Content-Type': 'application/json' },
+//                 body: JSON.stringify({ sessionId: data.sessionId }),
+//             });
+//             const { suggestions } = await suggestionRes.json();
+//
 //             setMessages((prev) => [
 //                 ...prev,
-//                 { id: Date.now(), content: data.message, isUser: false },
+//                 {
+//                     id: Date.now(),
+//                     content: `Successfully processed "${file.name}" (${data.stats.pages} pages). Try these questions:\n${suggestions}`,
+//                     isUser: false,
+//                 },
 //             ]);
 //             setFile(null);
 //             if (fileInputRef.current) {
 //                 fileInputRef.current.value = '';
+//             }
+//
+//             // Focus on query input after successful upload
+//             if (queryInputRef.current) {
+//                 queryInputRef.current.focus();
 //             }
 //         } catch (error: any) {
 //             setMessages((prev) => [
@@ -728,9 +758,13 @@
 //     const handleQuery = async (e: React.FormEvent) => {
 //         e.preventDefault();
 //         if (!query.trim()) {
+//             return;
+//         }
+//
+//         if (!currentSessionId) {
 //             setMessages((prev) => [
 //                 ...prev,
-//                 { id: Date.now(), content: 'Please enter a question.', isUser: false },
+//                 { id: Date.now(), content: 'Please upload a PDF first before asking questions.', isUser: false },
 //             ]);
 //             return;
 //         }
@@ -744,7 +778,7 @@
 //             const res = await fetch('/api/query', {
 //                 method: 'POST',
 //                 headers: { 'Content-Type': 'application/json' },
-//                 body: JSON.stringify({ query }),
+//                 body: JSON.stringify({ query, sessionId: currentSessionId }),
 //             });
 //
 //             const data = await res.json();
@@ -773,65 +807,184 @@
 //         }
 //     };
 //
+//     const handleNewSession = () => {
+//         setCurrentSessionId(null);
+//         setMessages([]);
+//         setStats(null);
+//         setFile(null);
+//         if (fileInputRef.current) {
+//             fileInputRef.current.value = '';
+//         }
+//     };
+//
+//     const handleSuggestionClick = (suggestion: string) => {
+//         // Remove numbering (e.g., "1. ") and set as query
+//         const cleanSuggestion = suggestion.replace(/^\d+\.\s*/, '');
+//         setQuery(cleanSuggestion);
+//         if (queryInputRef.current) {
+//             queryInputRef.current.focus();
+//         }
+//     };
+//
 //     return (
 //         <div className="bg-gray-100 min-h-screen flex items-center justify-center p-4">
-//             <div className="bg-white rounded-lg shadow-lg w-full max-w-lg flex flex-col h-[600px]">
+//             <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl flex flex-col h-[700px]">
 //                 {/* Header */}
-//                 <div className="bg-blue-600 text-white p-4 rounded-t-lg">
-//                     <h1 className="text-lg font-semibold">PDF Q&A Assistant</h1>
-//                     <p className="text-sm">Upload a PDF and ask questions about its content!</p>
+//                 <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 rounded-t-lg flex justify-between items-center">
+//                     <div>
+//                         <h1 className="text-xl font-bold">PDF Q&A Assistant</h1>
+//                         <p className="text-sm opacity-80">Upload a PDF and ask questions about its content!</p>
+//                     </div>
+//                     {currentSessionId && (
+//                         <button
+//                             onClick={handleNewSession}
+//                             className="bg-blue-500 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm transition-colors"
+//                         >
+//                             New Session
+//                         </button>
+//                     )}
 //                 </div>
 //
+//                 {/* Stats Bar (Only visible when PDF is processed) */}
+//                 {stats && (
+//                     <div className="bg-blue-50 p-2 text-xs text-blue-800 flex justify-between border-b border-blue-100">
+//                         <span>Pages: {stats.pages}</span>
+//                         <span>Chunks: {stats.chunks}</span>
+//                         <span>Characters: {stats.totalCharacters.toLocaleString()}</span>
+//                     </div>
+//                 )}
+//
 //                 {/* Chat Messages */}
-//                 <div
-//                     ref={chatContainerRef}
-//                     className="flex-1 p-4 overflow-y-auto flex flex-col gap-4"
-//                 >
+//                 <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
 //                     {messages.length === 0 ? (
-//                         <p className="text-gray-500 text-center mt-10">
-//                             Upload a PDF to start asking questions.
-//                         </p>
+//                         <div className="text-gray-500 text-center mt-10 flex flex-col items-center gap-4">
+//                             <svg
+//                                 xmlns="http://www.w3.org/2000/svg"
+//                                 className="h-16 w-16 text-blue-300"
+//                                 fill="none"
+//                                 viewBox="0 0 24 24"
+//                                 stroke="currentColor"
+//                             >
+//                                 <path
+//                                     strokeLinecap="round"
+//                                     strokeLinejoin="round"
+//                                     strokeWidth={1}
+//                                     d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+//                                 />
+//                             </svg>
+//                             <p>Upload a PDF to start asking questions.</p>
+//                         </div>
 //                     ) : (
-//                         <>
-//                             {isUploading && (
-//                                 <p className="text-gray-500 text-center">Processing PDF, please wait...</p>
-//                             )}
+//                         <AnimatePresence>
 //                             {messages.map((msg) => (
-//                                 <div
+//                                 <motion.div
 //                                     key={msg.id}
-//                                     className={`p-3 rounded-lg max-w-[80%] ${
+//                                     initial={{ opacity: 0, y: 10 }}
+//                                     animate={{ opacity: 1, y: 0 }}
+//                                     transition={{ duration: 0.3 }}
+//                                     className={`p-3 rounded-lg max-w-[85%] ${
 //                                         msg.isUser
 //                                             ? 'bg-blue-100 ml-auto text-right'
-//                                             : 'bg-gray-200 mr-auto text-left'
-//                                     } ${!msg.isUser && msg.content.includes('Failed') ? 'bg-red-100' : ''}`}
+//                                             : 'bg-gray-100 mr-auto text-left'
+//                                     } ${!msg.isUser && msg.content.includes('Failed') ? 'bg-red-100 text-red-700' : ''}`}
 //                                 >
-//                                     {msg.content}
-//                                 </div>
+//                                     {msg.content.includes('Try these questions:') ||
+//                                     msg.content.includes('Here are some questions you could ask:') ? (
+//                                         <div>
+//                                             <p>{msg.content.split('\n')[0]}</p>
+//                                             <div className="mt-2 flex flex-col gap-1">
+//                                                 {msg.content
+//                                                     .split('\n')
+//                                                     .slice(1)
+//                                                     .filter((line) => line.trim())
+//                                                     .map((question, idx) => (
+//                                                         <button
+//                                                             key={idx}
+//                                                             onClick={() => handleSuggestionClick(question)}
+//                                                             className="text-blue-600 hover:underline text-sm text-left"
+//                                                         >
+//                                                             {question}
+//                                                         </button>
+//                                                     ))}
+//                                             </div>
+//                                         </div>
+//                                     ) : (
+//                                         msg.content
+//                                     )}
+//                                 </motion.div>
 //                             ))}
-//                         </>
+//                             {isUploading && (
+//                                 <motion.div
+//                                     initial={{ opacity: 0 }}
+//                                     animate={{ opacity: 1 }}
+//                                     className="flex items-center gap-2 p-3 rounded-lg bg-gray-100 mr-auto"
+//                                 >
+//                                     <div className="flex space-x-1">
+//                                         <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+//                                         <div
+//                                             className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+//                                             style={{ animationDelay: '0.2s' }}
+//                                         ></div>
+//                                         <div
+//                                             className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+//                                             style={{ animationDelay: '0.4s' }}
+//                                         ></div>
+//                                     </div>
+//                                     <span className="text-sm text-gray-600">Processing PDF...</span>
+//                                 </motion.div>
+//                             )}
+//                             {isQuerying && (
+//                                 <motion.div
+//                                     initial={{ opacity: 0 }}
+//                                     animate={{ opacity: 1 }}
+//                                     className="flex items-center gap-2 p-3 rounded-lg bg-gray-100 mr-auto"
+//                                 >
+//                                     <div className="flex space-x-1">
+//                                         <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+//                                         <div
+//                                             className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+//                                             style={{ animationDelay: '0.2s' }}
+//                                         ></div>
+//                                         <div
+//                                             className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+//                                             style={{ animationDelay: '0.4s' }}
+//                                         ></div>
+//                                     </div>
+//                                     <span className="text-sm text-gray-600">Thinking...</span>
+//                                 </motion.div>
+//                             )}
+//                         </AnimatePresence>
 //                     )}
 //                 </div>
 //
 //                 {/* Upload Form */}
-//                 <form onSubmit={handleUpload} className="p-4 border-t bg-gray-50">
-//                     <div className="flex flex-col gap-2">
-//                         <input
-//                             type="file"
-//                             accept=".pdf"
-//                             ref={fileInputRef}
-//                             onChange={handleFileChange}
-//                             className="p-2 border rounded-lg text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-//                             disabled={isUploading}
-//                         />
-//                         <button
-//                             type="submit"
-//                             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-//                             disabled={isUploading || !file}
-//                         >
-//                             {isUploading ? 'Uploading...' : 'Upload PDF'}
-//                         </button>
-//                     </div>
-//                 </form>
+//                 {!currentSessionId && (
+//                     <form onSubmit={handleUpload} className="p-4 border-t bg-gray-50">
+//                         <div className="flex flex-col gap-2">
+//                             <div className="flex flex-col">
+//                                 <label htmlFor="pdf-upload" className="text-sm font-medium text-gray-700 mb-1">
+//                                     Upload PDF Document
+//                                 </label>
+//                                 <input
+//                                     id="pdf-upload"
+//                                     type="file"
+//                                     accept=".pdf"
+//                                     ref={fileInputRef}
+//                                     onChange={handleFileChange}
+//                                     className="p-2 border rounded-lg text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+//                                     disabled={isUploading}
+//                                 />
+//                             </div>
+//                             <button
+//                                 type="submit"
+//                                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+//                                 disabled={isUploading || !file}
+//                             >
+//                                 {isUploading ? 'Processing PDF...' : 'Upload and Process PDF'}
+//                             </button>
+//                         </div>
+//                     </form>
+//                 )}
 //
 //                 {/* Query Form */}
 //                 <form onSubmit={handleQuery} className="p-4 border-t bg-gray-50">
@@ -840,16 +993,17 @@
 //                             type="text"
 //                             value={query}
 //                             onChange={(e) => setQuery(e.target.value)}
-//                             placeholder="Ask a question about the PDF..."
-//                             className="flex-1 p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-//                             disabled={isQuerying}
+//                             placeholder={currentSessionId ? 'Ask a question about the PDF...' : 'Upload a PDF first to ask questions'}
+//                             className="flex-1 p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+//                             disabled={isQuerying || !currentSessionId}
+//                             ref={queryInputRef}
 //                         />
 //                         <button
 //                             type="submit"
-//                             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-//                             disabled={isQuerying}
+//                             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+//                             disabled={isQuerying || !currentSessionId || !query.trim()}
 //                         >
-//                             {isQuerying ? 'Querying...' : 'Ask'}
+//                             {isQuerying ? 'Processing...' : 'Ask'}
 //                         </button>
 //                     </div>
 //                 </form>
@@ -868,6 +1022,8 @@ interface Message {
     id: number;
     content: string;
     isUser: boolean;
+    responseId?: string;
+    query?: string;// For feedback
 }
 
 interface Stats {
@@ -882,13 +1038,23 @@ export default function Home() {
     const [query, setQuery] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [isQuerying, setIsQuerying] = useState(false);
-    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [sessionId, setSessionId] = useState<string | null>(null);
     const [stats, setStats] = useState<Stats | null>(null);
+    const [showHistory, setShowHistory] = useState(false);
+    const [feedbackStatus, setFeedbackStatus] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const queryInputRef = useRef<HTMLInputElement>(null);
 
-    // Auto-scroll to the bottom when new messages are added
+    // Initialize sessionId from localStorage
+    useEffect(() => {
+        const storedSessionId = localStorage.getItem('sessionId');
+        if (storedSessionId) {
+            setSessionId(storedSessionId);
+        }
+    }, []);
+
+    // Auto-scroll to bottom when messages change
     useEffect(() => {
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -896,8 +1062,15 @@ export default function Home() {
     }, [messages]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
+        if (e.target.files && e.target.files[0] && e.target.files[0].type === 'application/pdf') {
             setFile(e.target.files[0]);
+            setFeedbackStatus('');
+        } else {
+            setFile(null);
+            setMessages((prev) => [
+                ...prev,
+                {id: Date.now(), content: 'Please select a valid PDF file.', isUser: false},
+            ]);
         }
     };
 
@@ -914,6 +1087,9 @@ export default function Home() {
         setIsUploading(true);
         const formData = new FormData();
         formData.append('file', file);
+        if (sessionId) {
+            formData.append('sessionId', sessionId);
+        }
 
         try {
             const res = await fetch('/api/upload', {
@@ -927,33 +1103,38 @@ export default function Home() {
                 throw new Error(data.error || 'Failed to upload PDF');
             }
 
-            setCurrentSessionId(data.sessionId);
+            const newSessionId = sessionId || data.sessionId || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            setSessionId(newSessionId);
+            localStorage.setItem('sessionId', newSessionId);
             setStats(data.stats);
+
+            // Fetch proactive suggestions
+            const suggestionRes = await fetch('/api/suggestions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sessionId: newSessionId}),
+            });
+            const {suggestions} = await suggestionRes.json();
+
             setMessages((prev) => [
                 ...prev,
                 {
                     id: Date.now(),
-                    content: `Successfully processed "${file.name}" (${data.stats.pages} pages). You can now ask questions about the content!`,
-                    isUser: false
+                    content: `Successfully processed "${file.name}" (${data.stats.pages} pages). Try these questions:\n${suggestions}`,
+                    isUser: false,
                 },
             ]);
             setFile(null);
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
-
-            // Focus on query input after successful upload
             if (queryInputRef.current) {
                 queryInputRef.current.focus();
             }
         } catch (error: any) {
             setMessages((prev) => [
                 ...prev,
-                {
-                    id: Date.now(),
-                    content: error.message || 'Failed to upload PDF. Please try again.',
-                    isUser: false,
-                },
+                {id: Date.now(), content: error.message || 'Failed to upload PDF. Please try again.', isUser: false},
             ]);
         } finally {
             setIsUploading(false);
@@ -966,7 +1147,7 @@ export default function Home() {
             return;
         }
 
-        if (!currentSessionId) {
+        if (!sessionId) {
             setMessages((prev) => [
                 ...prev,
                 {id: Date.now(), content: 'Please upload a PDF first before asking questions.', isUser: false},
@@ -983,7 +1164,7 @@ export default function Home() {
             const res = await fetch('/api/query', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({query, sessionId: currentSessionId}),
+                body: JSON.stringify({query, sessionId}),
             });
 
             const data = await res.json();
@@ -996,6 +1177,8 @@ export default function Home() {
                 id: Date.now() + 1,
                 content: data.response || 'No response received.',
                 isUser: false,
+                responseId: data.responseId,
+                query,
             };
             setMessages((prev) => [...prev, botMessage]);
         } catch (error: any) {
@@ -1004,7 +1187,7 @@ export default function Home() {
                 {
                     id: Date.now() + 1,
                     content: error.message || 'Failed to process query. Please try again.',
-                    isUser: false,
+                    isUser: false
                 },
             ]);
         } finally {
@@ -1012,13 +1195,47 @@ export default function Home() {
         }
     };
 
+    const handleFeedback = async (responseId: string, rating: 'positive' | 'negative') => {
+        if (!sessionId || !responseId) return;
+
+        setFeedbackStatus('Submitting feedback...');
+        try {
+            const res = await fetch('/api/query', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({feedback: {rating}, responseId, sessionId, query}),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to submit feedback');
+            }
+
+            setFeedbackStatus('Feedback submitted!');
+            setTimeout(() => setFeedbackStatus(''), 2000);
+        } catch (error: any) {
+            setFeedbackStatus(error.message || 'Failed to submit feedback.');
+            setTimeout(() => setFeedbackStatus(''), 3000);
+        }
+    };
+
     const handleNewSession = () => {
-        setCurrentSessionId(null);
+        setSessionId(null);
+        localStorage.removeItem('sessionId');
         setMessages([]);
         setStats(null);
         setFile(null);
+        setShowHistory(false);
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
+        }
+    };
+
+    const handleSuggestionClick = (suggestion: string) => {
+        const cleanSuggestion = suggestion.replace(/^\d+\.\s*/, '');
+        setQuery(cleanSuggestion);
+        if (queryInputRef.current) {
+            queryInputRef.current.focus();
         }
     };
 
@@ -1032,17 +1249,29 @@ export default function Home() {
                         <h1 className="text-xl font-bold">PDF Q&A Assistant</h1>
                         <p className="text-sm opacity-80">Upload a PDF and ask questions about its content!</p>
                     </div>
-                    {currentSessionId && (
-                        <button
-                            onClick={handleNewSession}
-                            className="bg-blue-500 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm transition-colors"
-                        >
-                            New Session
-                        </button>
-                    )}
+                    <div className="flex gap-2">
+                        {sessionId && (
+                            <button
+                                onClick={() => setShowHistory(!showHistory)}
+                                className="bg-blue-500 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm transition-colors"
+                                aria-label={showHistory ? 'Hide chat history' : 'Show chat history'}
+                            >
+                                {showHistory ? 'Hide History' : 'Show History'}
+                            </button>
+                        )}
+                        {sessionId && (
+                            <button
+                                onClick={handleNewSession}
+                                className="bg-blue-500 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm transition-colors"
+                                aria-label="Start new session"
+                            >
+                                New Session
+                            </button>
+                        )}
+                    </div>
                 </div>
 
-                {/* Stats Bar (Only visible when PDF is processed) */}
+                {/* Stats Bar */}
                 {stats && (
                     <div className="bg-blue-50 p-2 text-xs text-blue-800 flex justify-between border-b border-blue-100">
                         <span>Pages: {stats.pages}</span>
@@ -1051,82 +1280,200 @@ export default function Home() {
                     </div>
                 )}
 
+                {/* Chat History Viewer */}
+                {showHistory && (
+                    <motion.div
+                        initial={{height: 0, opacity: 0}}
+                        animate={{height: 'auto', opacity: 1}}
+                        exit={{height: 0, opacity: 0}}
+                        className="p-4 bg-gray-50 border-b max-h-48 overflow-y-auto"
+                        aria-live="polite"
+                    >
+                        <h2 className="text-sm font-semibold text-gray-700 mb-2">Chat History</h2>
+                        {messages.length === 0 ? (
+                            <p className="text-gray-500 text-sm">No history yet.</p>
+                        ) : (
+                            messages.map((msg) => (
+                                <div key={msg.id} className="mb-2 text-sm">
+                                    <p className={`${msg.isUser ? 'text-blue-600' : 'text-gray-600'}`}>
+                                        <span className="font-semibold">{msg.isUser ? 'You' : 'Assistant'}: </span>
+                                        {msg.content.split('\n')[0]}
+                                    </p>
+                                </div>
+                            ))
+                        )}
+                    </motion.div>
+                )}
+
                 {/* Chat Messages */}
-                <div
-                    ref={chatContainerRef}
-                    className="flex-1 p-4 overflow-y-auto flex flex-col gap-4"
-                >
+                <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
                     {messages.length === 0 ? (
                         <div className="text-gray-500 text-center mt-10 flex flex-col items-center gap-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-blue-300" fill="none"
-                                 viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-                                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-16 w-16 text-blue-300"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={1}
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
                             </svg>
                             <p>Upload a PDF to start asking questions.</p>
                         </div>
                     ) : (
-                        <>
-                            <AnimatePresence>
-                                {messages.map((msg) => (
-                                    <motion.div
-                                        key={msg.id}
-                                        initial={{opacity: 0, y: 10}}
-                                        animate={{opacity: 1, y: 0}}
-                                        transition={{duration: 0.3}}
-                                        className={`p-3 rounded-lg max-w-[85%] ${
-                                            msg.isUser
-                                                ? 'bg-blue-100 ml-auto text-right'
-                                                : 'bg-gray-100 mr-auto text-left'
-                                        } ${!msg.isUser && msg.content.includes('Failed') ? 'bg-red-100 text-red-700' : ''}`}
-                                    >
-                                        {msg.content}
-                                    </motion.div>
-                                ))}
-                                {isUploading && (
-                                    <motion.div
-                                        initial={{opacity: 0}}
-                                        animate={{opacity: 1}}
-                                        className="flex items-center gap-2 p-3 rounded-lg bg-gray-100 mr-auto"
-                                    >
-                                        <div className="flex space-x-1">
-                                            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-                                            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-                                                 style={{animationDelay: '0.2s'}}></div>
-                                            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-                                                 style={{animationDelay: '0.4s'}}></div>
+                        <AnimatePresence>
+                            {messages.map((msg) => (
+                                <motion.div
+                                    key={msg.id}
+                                    initial={{opacity: 0, y: 10}}
+                                    animate={{opacity: 1, y: 0}}
+                                    transition={{duration: 0.3}}
+                                    className={`p-3 rounded-lg max-w-[85%] ${
+                                        msg.isUser
+                                            ? 'bg-blue-100 ml-auto text-right'
+                                            : 'bg-gray-100 mr-auto text-left'
+                                    } ${!msg.isUser && msg.content.includes('Failed') ? 'bg-red-100 text-red-700' : ''}`}
+                                >
+                                    {msg.content.includes('Try these questions:') ||
+                                    msg.content.includes('Here are some questions you could ask:') ? (
+                                        <div>
+                                            <p>{msg.content.split('\n')[0]}</p>
+                                            <div className="mt-2 flex flex-col gap-1">
+                                                {msg.content
+                                                    .split('\n')
+                                                    .slice(1)
+                                                    .filter((line) => line.trim())
+                                                    .map((question, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            onClick={() => handleSuggestionClick(question)}
+                                                            className="text-blue-600 hover:underline text-sm text-left"
+                                                            aria-label={`Select suggestion: ${question}`}
+                                                        >
+                                                            {question}
+                                                        </button>
+                                                    ))}
+                                            </div>
                                         </div>
-                                        <span className="text-sm text-gray-600">Processing PDF...</span>
-                                    </motion.div>
-                                )}
-                                {isQuerying && (
-                                    <motion.div
-                                        initial={{opacity: 0}}
-                                        animate={{opacity: 1}}
-                                        className="flex items-center gap-2 p-3 rounded-lg bg-gray-100 mr-auto"
-                                    >
-                                        <div className="flex space-x-1">
-                                            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-                                            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-                                                 style={{animationDelay: '0.2s'}}></div>
-                                            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-                                                 style={{animationDelay: '0.4s'}}></div>
+                                    ) : (
+                                        <div>
+                                            {/* Highlight page references */}
+                                            <p
+                                                dangerouslySetInnerHTML={{
+                                                    __html: msg.content.replace(
+                                                        /(Page \d+)/g,
+                                                        '<span class="font-semibold text-blue-600">$1</span>'
+                                                    ),
+                                                }}
+                                            />
+                                            {/* Feedback buttons for bot messages */}
+                                            {!msg.isUser && msg.responseId && (
+                                                <div className="mt-2 flex gap-2" role="group"
+                                                     aria-label="Feedback buttons">
+                                                    <button
+                                                        onClick={() => handleFeedback(msg.responseId!, 'positive')}
+                                                        className="text-green-600 hover:text-green-800"
+                                                        aria-label="Rate answer as positive"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor"
+                                                             viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round"
+                                                                  strokeWidth="2" d="M5 15l7-7 7 7"/>
+                                                        </svg>
+                                                        <span className="sr-only">Thumbs Up</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleFeedback(msg.responseId!, 'negative')}
+                                                        className="text-red-600 hover:text-red-800"
+                                                        aria-label="Rate answer as negative"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor"
+                                                             viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round"
+                                                                  strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                                                        </svg>
+                                                        <span className="sr-only">Thumbs Down</span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                        <span className="text-sm text-gray-600">Thinking...</span>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </>
+                                    )}
+                                </motion.div>
+                            ))}
+                            {isUploading && (
+                                <motion.div
+                                    initial={{opacity: 0}}
+                                    animate={{opacity: 1}}
+                                    className="flex items-center gap-2 p-3 rounded-lg bg-gray-100 mr-auto"
+                                >
+                                    <div className="flex space-x-1">
+                                        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+                                        <div
+                                            className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                                            style={{animationDelay: '0.2s'}}
+                                        ></div>
+                                        <div
+                                            className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                                            style={{animationDelay: '0.4s'}}
+                                        ></div>
+                                    </div>
+                                    <span className="text-sm text-gray-600">Processing PDF...</span>
+                                </motion.div>
+                            )}
+                            {isQuerying && (
+                                <motion.div
+                                    initial={{opacity: 0}}
+                                    animate={{opacity: 1}}
+                                    className="flex items-center gap-2 p-3 rounded-lg bg-gray-100 mr-auto"
+                                >
+                                    <div className="flex space-x-1">
+                                        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+                                        <div
+                                            className="w-2 h-2 bg-blue-600 rounded-full animate-bounce stylized-bounce"
+                                            style={{animationDelay: '0.2s'}}
+                                        ></div>
+                                        <div
+                                            className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                                            style={{animationDelay: '0.4s'}}
+                                        ></div>
+                                    </div>
+                                    <span className="text-sm text-gray-600">Thinking...</span>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     )}
                 </div>
 
+                {/* Feedback Status */}
+                {feedbackStatus && (
+                    <motion.div
+                        initial={{opacity: 0}}
+                        animate={{opacity: 1}}
+                        exit={{opacity: 0}}
+                        className={`p-2 text-sm rounded-lg mx-4 mb-2 ${
+                            feedbackStatus.includes('Failed')
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-green-100 text-green-700'
+                        }`}
+                        aria-live="polite"
+                    >
+                        {feedbackStatus}
+                    </motion.div>
+                )}
+
                 {/* Upload Form */}
-                {!currentSessionId && (
+                {!sessionId && (
                     <form onSubmit={handleUpload} className="p-4 border-t bg-gray-50">
                         <div className="flex flex-col gap-2">
                             <div className="flex flex-col">
-                                <label htmlFor="pdf-upload" className="text-sm font-medium text-gray-700 mb-1">Upload
-                                    PDF Document</label>
+                                <label htmlFor="pdf-upload" className="text-sm font-medium text-gray-700 mb-1">
+                                    Upload PDF Document
+                                </label>
                                 <input
                                     id="pdf-upload"
                                     type="file"
@@ -1135,12 +1482,14 @@ export default function Home() {
                                     onChange={handleFileChange}
                                     className="p-2 border rounded-lg text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-blue-600 file:text-white hover:file:bg-blue-700"
                                     disabled={isUploading}
+                                    aria-label="Select PDF file"
                                 />
                             </div>
                             <button
                                 type="submit"
                                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                                 disabled={isUploading || !file}
+                                aria-label="Upload PDF"
                             >
                                 {isUploading ? 'Processing PDF...' : 'Upload and Process PDF'}
                             </button>
@@ -1155,15 +1504,17 @@ export default function Home() {
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder={currentSessionId ? "Ask a question about the PDF..." : "Upload a PDF first to ask questions"}
+                            placeholder={sessionId ? 'Ask a question about the PDF...' : 'Upload a PDF first to ask questions'}
                             className="flex-1 p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                            disabled={isQuerying || !currentSessionId}
+                            disabled={isQuerying || !sessionId}
                             ref={queryInputRef}
+                            aria-label="Query input"
                         />
                         <button
                             type="submit"
                             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                            disabled={isQuerying || !currentSessionId || !query.trim()}
+                            disabled={isQuerying || !sessionId || !query.trim()}
+                            aria-label="Submit query"
                         >
                             {isQuerying ? 'Processing...' : 'Ask'}
                         </button>
