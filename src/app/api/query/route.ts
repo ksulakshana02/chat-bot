@@ -764,12 +764,14 @@ import {NextResponse} from 'next/server';
 import {Pinecone} from '@pinecone-database/pinecone';
 import Groq from 'groq-sdk';
 import {pipeline, env} from '@xenova/transformers';
+import OpenAI from "openai";
 
 env.allowLocalModels = true;
 env.localModelPath = 'node_modules/@xenova/transformers/models';
 
 const pinecone = new Pinecone({apiKey: process.env.NEXT_PUBLIC_PINECONE_API_KEY!});
-const groq = new Groq({apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY!});
+// const groq = new Groq({apiKey: process.env.NEXT_PUBLIC_GROQ_API_KEY!});
+const openai = new OpenAI({apiKey: process.env.NEXT_PUBLIC_OPEN_AI_KEY!})
 const indexName = 'pdf-chunks';
 const pdfNamespace = 'user-docs';
 const chatNamespace = 'chat-history';
@@ -903,7 +905,7 @@ export async function POST(request: Request) {
         let response;
         if (!isPdfRelevant && !isChatRelevant) {
             if (chatSimilarityContext) {
-                const partialCompletion = await groq.chat.completions.create({
+                const partialCompletion = await openai.chat.completions.create({
                     messages: [
                         {
                             role: 'system',
@@ -915,8 +917,9 @@ export async function POST(request: Request) {
                             content: `Chat History:\n${chatSimilarityContext}\n\nQuestion: ${query}`,
                         },
                     ],
-                    model: 'llama-3.3-70b-versatile',
-                    temperature: 0.2,
+                    // model: 'llama-3.3-70b-versatile',
+                    model:'gpt-4o-mini',
+                    temperature: 1.2,
                     max_tokens: 200,
                 });
                 const partialResponse = partialCompletion.choices[0]?.message?.content;
@@ -937,7 +940,7 @@ export async function POST(request: Request) {
                     .map((match) => match.metadata?.text || '')
                     .join('\n');
 
-                const suggestionCompletion = await groq.chat.completions.create({
+                const suggestionCompletion = await openai.chat.completions.create({
                     messages: [
                         {
                             role: 'system',
@@ -949,15 +952,15 @@ export async function POST(request: Request) {
                             content: `PDF Content:\n${suggestionText}\n\nSuggest 3 questions.`,
                         },
                     ],
-                    model: 'llama-3.3-70b-versatile',
-                    temperature: 0.5,
+                    model: 'gpt-4o-mini',
+                    temperature: 1.2,
                     max_tokens: 150,
                 });
 
                 response = `I couldn’t find enough information to answer your question. Here are some questions you could ask:\n${suggestionCompletion.choices[0]?.message?.content || 'No suggestions available.'}`;
             }
         } else {
-            const chatCompletion = await groq.chat.completions.create({
+            const chatCompletion = await openai.chat.completions.create({
                 messages: [
                     {
                         role: 'system',
@@ -969,8 +972,8 @@ export async function POST(request: Request) {
                         content: `${combinedContext}\n\nQuestion: ${query}`,
                     },
                 ],
-                model: 'llama-3.3-70b-versatile',
-                temperature: 0.2,
+                model: 'gpt-4o-mini',
+                temperature: 1.2,
                 max_tokens: 300,
             });
 
@@ -1007,7 +1010,7 @@ export async function POST(request: Request) {
             pdfMatchCount,
             chatMatchCount,
             contextLength: combinedContext.length,
-            embeddingModel: 'all-MiniLM-L6-v2',
+            embeddingModel: 'gpt-4o-mini',
         });
     } catch (error: any) {
         console.error('Error in /api/query:', error);
